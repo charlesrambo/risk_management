@@ -94,9 +94,9 @@ def put(V, T, K, r, sigma_V, phi = 1):
     d_1, d_2 = get_d(V, T, K, r, sigma_V)
     
     # Use the Black-Scholes put formula
-    P = K * np.exp(-r * T) * norm.cdf(-d_2) - phi * V * norm.cdf(-d_1) 
+    put = K * np.exp(-r * T) * norm.cdf(-d_2) - phi * V * norm.cdf(-d_1) 
     
-    return P
+    return put
 
 
 # Up-and-in put option
@@ -143,6 +143,58 @@ def put_uo(V, T, K, H, r, sigma_V, phi = 1):
     
     return put_uo
 
+# Down-and-in put option
+def put_di(V, T, K, H, r, sigma_V, phi = 1):
+    """
+    Value of a down-and-in put option under the Black-Scholes framework. 
+    Formula on page 606 of "Options, Futures, and Other Derivatives" 9th ed. by Hull.
+    
+    V: Value of the firm.
+    T: Time until maturity.
+    K: Strike price; related to the firm's debt level.
+    H: Value of the firm which deactivates the up-and-out option.
+    r: Risk-free rate.
+    sigma_V: Firm volatility. 
+    phi: Fraction of firm's value retained in the case of default.
+    """  
+    
+    λ = (r + 0.5 * sigma_V**2)/sigma_V**2
+    
+    y = np.log(H**2/(V * K))/(sigma_V * np.sqrt(T)) + λ * sigma_V * np.sqrt(T)
+    
+    x_1 = np.log(V/H)/(sigma_V * np.sqrt(T)) + λ * sigma_V * np.sqrt(T)
+    
+    y_1 = np.log(H/V)/(sigma_V * np.sqrt(T)) + λ * sigma_V * np.sqrt(T)
+    
+    term_0 = -phi * V  * norm.cdf(-x_1)
+    term_1 = K * np.exp(-r * T) * norm.cdf(-x_1 + sigma_V * np.sqrt(T))
+    term_2 = phi * V * (H/V)**(2 * λ) * (norm.cdf(y) - norm.cdf(y_1))
+    term_3 = - K * np.exp(-r * T) * (H/V)**(2 * λ - 2) * (norm.cdf(y - sigma_V * np.sqrt(T)) - norm.cdf(y_1 - sigma_V * np.sqrt(T)))
+    
+    put_di = term_0 + term_1 + term_2 + term_3
+            
+    return put_di
+
+
+# Down-and-out put option
+def put_do(V, T, K, H, r, sigma_V, phi = 1):
+    """
+    Value of a down-and-out put option under the Black-Scholes framework. 
+    Formula on page 606 of "Options, Futures, and Other Derivatives" 9th ed. by Hull.
+    
+    V: Value of the firm.
+    T: Time until maturity.
+    K: Strike price; related to the firm's debt level.
+    H: Value of the firm which deactivates the up-and-out option.
+    r: Risk-free rate.
+    sigma_V: Firm volatility. 
+    phi: Fraction of firm's value retained in the case of default.
+    """  
+      
+    # put = put_uo + put_ui
+    put_do = put(V, T, K, r, sigma_V, phi) - put_di(V, T, K, H, r, sigma_V, phi)
+    
+    return put_do
 
 # Define function to get the probability of default if it's a barrier option
 def prob_default_mc(V, T, K, r, sigma_V, trails = 10000, steps = None):
@@ -317,20 +369,38 @@ def spread_mc(V, T, K, r, sigma_V, phi = 1, trails = 10000, steps = None):
 # Create function to construct spread given rachet up of capital structure
 def spread_das(V, T, K_1, K_2, H, r, sigma_V, phi = 1):
     """
-    CDS spread if default possible only at time T, but firm increases debt if its value goes above barrior. 
+    CDS spread if default possible only at time T, but firm increases/decreases debt if its value goes above/below barrior. 
     Inspired by the Journal of Banking & Finance article "Credit spreads with dynamic debt" by Das and Kim.
     
     V: Value of the firm.
     T: Time until maturity.
-    K_1: Strike price if firm does not increase its debt level.
-    K_2: Strike price if firm increases its debt level.
-    H: Value of the firm which triggers it to increase its debt level from K_1 to K_2.
+    K_1: Strike price if firm does not increase/decrease its debt level.
+    K_2: Strike price if firm increase/decrease its debt level.
+    H: Value of the firm which triggers it to increase/decrease its debt level from K_1 to K_2.
     r: Risk-free rate.
     sigma_V: Firm volatility. 
     phi: Fraction of firm's value retained in the case of default.
     """ 
-      
-    G_val = put_uo(V, T, K_1, H, r, sigma_V, phi) + K_1/K_2 * put_ui(V, T, K_2, H, r, sigma_V, phi)
+    
+    if H >= V:  
+        
+        if K_2 <= K_1:
+            
+            print("This formulation doesn't make sense. If H > V, the value of K_2 should be lager than K_1.")
+            
+        G_val = put_uo(V, T, K_1, H, r, sigma_V, phi) + K_1/K_2 * put_ui(V, T, K_2, H, r, sigma_V, phi)
+        
+    elif H < V:
+        
+        if K_2 >= K_1:
+            
+            print("This formulation doesn't make. If H < V, the value of K_1 should be lager than K_2.")     
+            
+        G_val = put_do(V, T, K_1, H, r, sigma_V, phi) + K_1/K_2 * put_di(V, T, K_2, H, r, sigma_V, phi)
+        
+    else:
+        
+        return np.nan
     
     if G_val < K_1 * np.exp(-r * T):
         
