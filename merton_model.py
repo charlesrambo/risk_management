@@ -114,11 +114,11 @@ def put_ui(V, T, K, H, r, sigma_V, phi = 1):
     phi: Fraction of firm's value retained in the case of default.
     """ 
     
-    λ = (r + 0.5 * sigma_V**2)/sigma_V**2
+    lam = (r + 0.5 * sigma_V**2)/sigma_V**2
     
-    y = np.log(H**2/(V * K))/(sigma_V * np.sqrt(T)) + λ * sigma_V * np.sqrt(T)
+    y = np.log(H**2/(V * K))/(sigma_V * np.sqrt(T)) + lam * sigma_V * np.sqrt(T)
     
-    put_ui = -phi * V * (H/V)**(2 * λ) * norm.cdf(-y) + K * np.exp(-r * T) * (H/V)**(2 * λ - 2) * norm.cdf(-y + sigma_V * np.sqrt(T))
+    put_ui = -phi * V * (H/V)**(2 * lam) * norm.cdf(-y) + K * np.exp(-r * T) * (H/V)**(2 * lam - 2) * norm.cdf(-y + sigma_V * np.sqrt(T))
     
     return put_ui
 
@@ -158,18 +158,18 @@ def put_di(V, T, K, H, r, sigma_V, phi = 1):
     phi: Fraction of firm's value retained in the case of default.
     """  
     
-    λ = (r + 0.5 * sigma_V**2)/sigma_V**2
+    lam = (r + 0.5 * sigma_V**2)/sigma_V**2
     
-    y = np.log(H**2/(V * K))/(sigma_V * np.sqrt(T)) + λ * sigma_V * np.sqrt(T)
+    y = np.log(H**2/(V * K))/(sigma_V * np.sqrt(T)) + lam * sigma_V * np.sqrt(T)
     
-    x_1 = np.log(V/H)/(sigma_V * np.sqrt(T)) + λ * sigma_V * np.sqrt(T)
+    x_1 = np.log(V/H)/(sigma_V * np.sqrt(T)) + lam * sigma_V * np.sqrt(T)
     
-    y_1 = np.log(H/V)/(sigma_V * np.sqrt(T)) + λ * sigma_V * np.sqrt(T)
+    y_1 = np.log(H/V)/(sigma_V * np.sqrt(T)) + lam * sigma_V * np.sqrt(T)
     
     term_0 = -phi * V  * norm.cdf(-x_1)
     term_1 = K * np.exp(-r * T) * norm.cdf(-x_1 + sigma_V * np.sqrt(T))
-    term_2 = phi * V * (H/V)**(2 * λ) * (norm.cdf(y) - norm.cdf(y_1))
-    term_3 = - K * np.exp(-r * T) * (H/V)**(2 * λ - 2) * (norm.cdf(y - sigma_V * np.sqrt(T)) - norm.cdf(y_1 - sigma_V * np.sqrt(T)))
+    term_2 = phi * V * (H/V)**(2 * lam) * (norm.cdf(y) - norm.cdf(y_1))
+    term_3 = - K * np.exp(-r * T) * (H/V)**(2 * lam - 2) * (norm.cdf(y - sigma_V * np.sqrt(T)) - norm.cdf(y_1 - sigma_V * np.sqrt(T)))
     
     put_di = term_0 + term_1 + term_2 + term_3
             
@@ -191,7 +191,7 @@ def put_do(V, T, K, H, r, sigma_V, phi = 1):
     phi: Fraction of firm's value retained in the case of default.
     """  
       
-    # put = put_uo + put_ui
+    # put = put_do + put_di
     put_do = put(V, T, K, r, sigma_V, phi) - put_di(V, T, K, H, r, sigma_V, phi)
     
     return put_do
@@ -411,10 +411,10 @@ def spread_das(V, T, K_1, K_2, H, r, sigma_V, phi = 1):
         return np.nan
     
 
-# Create the objective function that we would like to minimize to obtain sigma_V
-def obj(sigma_V, sigma_E, V, T, K, r):
+# Create the objective function that we would like to solve to obtain sigma_V
+def obj_sigma_V(sigma_V, sigma_E, V, T, K, r):
     """
-    Objective function to be minimized. Used to obtain the volatility of the firm's value.
+    Objective function to be solved. Used to obtain the volatility of the firm's value.
     
     sigma_V: Firm volatility.
     sigma_E: Equity volatility.
@@ -446,9 +446,10 @@ def get_sigma_V(sigma_E, V, T, K, r):
     """     
     
     # Use solver to find sigma_V
-    result = fsolve(obj, x0 = 0.5 * sigma_E, args = (sigma_E, V, T, K, r))
+    result = fsolve(obj_sigma_V, x0 = 0.5 * sigma_E, 
+                        args = (sigma_E, V, T, K, r))
     
-    if np.abs(obj(result, sigma_E, V, T, K, r)) < 10**-3:    
+    if np.abs(obj_sigma_V(result, sigma_E, V, T, K, r)) < 1e-3:    
         
         return result   
     
@@ -461,6 +462,103 @@ def get_sigma_V(sigma_E, V, T, K, r):
         Delta = 0.80
         
         return sigma_E * E/(Delta * V)
+    
+    
+# Create the objective function that we would like to solve to obtain V
+def obj_V(V, sigma_V, E, T, K, r):
+    """
+    Objective function to solve. Used to obtain the firm's value.
+ 
+    V: Value of the firm.
+    sigma_V: Firm volatility.
+    E: Market value of equity.
+    T: Time until maturity.
+    K: Strike price; related to the firm's debt level.
+    r: Risk-free rate.
+    """
+    
+    # Get d_1 for the calculation
+    d_1, _ = get_d(V, T, K, r, sigma_V)
+    
+    # Calculate value of equity
+    E_mm = call(V, T, K, r, sigma_V)
+    
+    return E - E_mm
+
+
+# Create function to obtain V
+def get_V(sigma_V, E, T, K, r):
+    """
+    Obtain the the firm's value. Uses the Black-Scholes framework and fsolve.
+    
+    sigma_V: Firm volatility.
+    E: Market value of firm equity
+    T: Time until maturity.
+    K: Strike price; related to the firm's debt level.
+    r: Risk-free rate.
+    """     
+    
+    # Use solver to find sigma_V
+    result = fsolve(obj_V, x0 = E + K, args = (sigma_V, E, T, K, r))
+    
+    if np.abs(obj_V(result, sigma_V, E, T, K, r)) < 1e-3:    
+        
+        return result   
+    
+    else:       
+        
+        return E + K * np.exp(-r * T)
+    
+    
+# Define objective function that we would like to solve to get both V and sigma_V
+def obj(V, sigma_V, sigma_E, E, T, K, r):
+    """
+    Objective function to be solved. Used to obtain the firm's value as well as
+    the volatility of the firm's value.
+ 
+    V: Value of the firm.
+    sigma_V: Firm volatility.
+    sigma_E: Equity volatility.
+    E: Market value of equity.
+    T: Time until maturity.
+    K: Strike price; related to the firm's debt level.
+    r: Risk-free rate.
+    """
+    
+    return [obj_V(V, sigma_V, E, T, K, r), 
+                obj_sigma_V(sigma_V, sigma_E, V, T, K, r)]
+
+
+# Create function to solve for both V and sigma_V
+def get_V_and_sigma_V(sigma_E, E, T, K, r):
+    """
+    Obtain the firm's value as well as the volatility of the firm's value. Uses 
+    the Black-Scholes framework and fsolve.
+    
+    sigma_E: Equity volatility.
+    E: Market value of equity.
+    T: Time until maturity.
+    K: Strike price; related to the firm's debt level.
+    r: Risk-free rate.
+    """     
+    
+    # Use solver to find V and sigma_V
+    result = fsolve(lambda x: obj(*x, sigma_E, E, T, K, r), 
+                    x0 = [E + K * np.exp(-r * T), 0.5 * sigma_E])
+    
+    if np.linalg.norm(obj(result[0], result[1], sigma_E, E, T, K, r)) < 1e-2:    
+        
+        return result[0], result[1]   
+    
+    else:       
+        
+        # Estimate of V
+        V = E + K * np.exp(-r * T)
+        
+        # Assume Delta = 0.80
+        Delta = 0.80
+        
+        return V, sigma_E * E/(Delta * V)
 
 
 # Create function to obtain suggested K value
