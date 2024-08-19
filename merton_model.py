@@ -28,6 +28,20 @@ def get_d(V, T, K, r, sigma_V):
     
     return d_1, d_2
 
+
+def get_lambda(r, sigma_V):
+    """
+    An intermediate value for the barrior options. Formula on page 605 of 
+    "Options, Futures, and Other Derivatives" 9th ed. by Hull.
+    
+    r: Risk-free rate.
+    sigma_V: Firm volatility. 
+    """    
+    
+    lamb = (r + 0.5 * sigma_V**2)/sigma_V**2
+    
+    return lamb
+
 # Create function to get the Merton model distance to default
 def distance(V, T, K, r, sigma_V):
     """
@@ -74,6 +88,146 @@ def call(V, T, K, r, sigma_V):
     
     return C
 
+# Down-and-in call option
+def call_di(V, T, K, H, r, sigma_V):
+    """
+    Value of an down-and-in call option under the Black-Scholes framework. 
+    Formula on page 604-5 of "Options, Futures, and Other Derivatives" 9th ed. by Hull.
+    
+    V: Value of the firm.
+    T: Time until maturity.
+    K: Strike price; related to the firm's debt level.
+    H: Value of the firm which activates the up-and-in option.
+    r: Risk-free rate.
+    sigma_V: Firm volatility. 
+    """ 
+    
+    if H < K:
+        
+        
+        lamb = get_lambda(r, sigma_V)
+        
+        y1, y2 = get_d(H**2, T, K * V, r, sigma_V)
+        
+        call_di = V * (H/V)**(2 * lamb) * norm.cdf(y1) - K * np.exp(-r * T) * (H/V)**(2 * lamb - 2) * norm.cdf(y2)
+        
+    else:
+        
+        call_di = call(V, T, K, r, sigma_V) - call_do(V, T, K, H, r, sigma_V)        
+    
+    return call_di
+
+
+# Down-and-out call option
+def call_do(V, T, K, H, r, sigma_V):
+    """
+    Value of an down-and-out call option under the Black-Scholes framework. 
+    Formula on page 604-5 of "Options, Futures, and Other Derivatives" 9th ed. by Hull.
+    
+    V: Value of the firm.
+    T: Time until maturity.
+    K: Strike price; related to the firm's debt level.
+    H: Value of the firm which activates the up-and-in option.
+    r: Risk-free rate.
+    sigma_V: Firm volatility. 
+    """ 
+    
+    
+    if V < H:
+        
+        call_do = 0
+
+    elif H < K:
+        
+        call_do = call(V, T, K, r, sigma_V) - call_di(V, T, K, H, r, sigma_V)
+        
+    else:
+        
+        
+        lamb = get_lambda(r, sigma_V)
+        
+        x1, x2 = get_d(V, T, H, r, sigma_V)
+        
+        # zi is yi where H = K
+        z1, z2 = get_d(H, T, V, r, sigma_V)
+        
+        term0 = V * norm.cdf(x1)
+        term1 = -K * np.exp(-r * T) * norm.cdf(x2)
+        term2 = -V * (H/V)**(2 * lamb) * norm.cdf(z1)
+        term3 = K * np.exp(-r * T) * (H/V)**(2 * lamb - 2) * norm.cdf(z2)
+        
+        call_do = term0 + term1 + term2 + term3    
+    
+    return call_do
+
+
+# Up-and-i call
+def call_ui(V, T, K, H, r, sigma_V):
+    """
+    Value of an up-and-out call option under the Black-Scholes framework. 
+    Formula on page 605 of "Options, Futures, and Other Derivatives" 9th ed. by Hull.
+    
+    V: Value of the firm.
+    T: Time until maturity.
+    K: Strike price; related to the firm's debt level.
+    H: Value of the firm which activates the up-and-in option.
+    r: Risk-free rate.
+    sigma_V: Firm volatility. 
+    """ 
+    
+    if H > K:
+        
+        lamb = get_lambda(r, sigma_V)
+        
+        x1, x2 = get_d(V, T, H, r, sigma_V) 
+        y1, y2 = get_d(H**2, T, K * V, r, sigma_V)
+        
+        # zi is yi where H = K
+        z1, z2 = get_d(H, T, V, r, sigma_V)
+        
+        term0 = V * norm.cdf(x1)
+        term1 = -K * np.exp(-r * T) * norm.cdf(x2)
+        term2 = -V * (H/V)**(2 * lamb) *(norm.cdf(-y1) - norm.cdf(-z1))
+        term3 =  K * np.exp(-r * T) * (H/V)**(2 * lamb - 2) * (norm.cdf(-y2) - norm.cdf(-z2))
+        
+        call_ui = term0 + term1 + term2 + term3
+        
+    else:
+        
+        call_ui = call(V, T, K, r, sigma_V)
+        
+    return call_ui
+
+
+# Up-and-out call
+def call_uo(V, T, K, H, r, sigma_V):
+    """
+    Value of an up-and-out call option under the Black-Scholes framework. 
+    Formula on page 605 of "Options, Futures, and Other Derivatives" 9th ed. by Hull.
+    
+    V: Value of the firm.
+    T: Time until maturity.
+    K: Strike price; related to the firm's debt level.
+    H: Value of the firm which activates the up-and-in option.
+    r: Risk-free rate.
+    sigma_V: Firm volatility. 
+    phi: Fraction of firm's value retained in the case of default.
+    """ 
+    
+    if V > H:
+        
+        call_uo = 0
+        
+    elif H > K:
+        
+        call_uo = call(V, T, K, r, sigma_V) - call_ui(V, T, K, H, r, sigma_V)
+        
+    else:
+        
+        call_uo = 0
+        
+    return call_uo       
+        
 
 # Define function to get put price
 def put(V, T, K, r, sigma_V, phi = 1):
@@ -114,11 +268,17 @@ def put_ui(V, T, K, H, r, sigma_V, phi = 1):
     phi: Fraction of firm's value retained in the case of default.
     """ 
     
-    lam = (r + 0.5 * sigma_V**2)/sigma_V**2
-    
-    y = np.log(H**2/(V * K))/(sigma_V * np.sqrt(T)) + lam * sigma_V * np.sqrt(T)
-    
-    put_ui = -phi * V * (H/V)**(2 * lam) * norm.cdf(-y) + K * np.exp(-r * T) * (H/V)**(2 * lam - 2) * norm.cdf(-y + sigma_V * np.sqrt(T))
+    if H > K:
+        
+        
+        lamb = get_lambda(r, sigma_V)
+        y1, y2 = get_d(H**2, T, K * V, r, sigma_V)
+        
+        put_ui = -phi * V * (H/V)**(2 * lamb) * norm.cdf(-y1) + K * np.exp(-r * T) * (H/V)**(2 * lamb - 2) * norm.cdf(-y2)
+        
+    else:
+        
+        put_ui = put(V, T, K, r, sigma_V, phi) - put_uo(V, T, K, H, r, sigma_V, phi)
     
     return put_ui
 
@@ -137,9 +297,33 @@ def put_uo(V, T, K, H, r, sigma_V, phi = 1):
     sigma_V: Firm volatility. 
     phi: Fraction of firm's value retained in the case of default.
     """  
-      
-    # put = put_uo + put_ui
-    put_uo = put(V, T, K, r, sigma_V, phi) - put_ui(V, T, K, H, r, sigma_V, phi)
+     
+    if V > H:
+        
+        put_uo = 0
+        
+    elif H > K:
+        
+        # put = put_uo + put_ui
+        put_uo = put(V, T, K, r, sigma_V, phi) - put_ui(V, T, K, H, r, sigma_V, phi)
+        
+    else:
+        
+        lamb = get_lambda(r, sigma_V)
+        
+        
+        x1, x2 = get_d(V, T, H, r, sigma_V) 
+        y1, y2 = get_d(H**2, T, K * V, r, sigma_V)
+        
+        # zi is yi where H = K
+        z1, z2 = get_d(H, T, V, r, sigma_V)
+        
+        term0 = -phi * V * norm.cdf(-x1) 
+        term1 = K * np.exp(-r * T) * norm.cdf(-x2)
+        term2 = phi * V * (H/V)**(2 * lamb) * norm.cdf(-z1)
+        term3 = -K * np.exp(-r * T) * (H/V)**(2 * lamb - 2) * norm.cdf(-z2)
+        
+        put_uo = term0 + term1 + term2 + term3
     
     return put_uo
 
@@ -158,20 +342,26 @@ def put_di(V, T, K, H, r, sigma_V, phi = 1):
     phi: Fraction of firm's value retained in the case of default.
     """  
     
-    lam = (r + 0.5 * sigma_V**2)/sigma_V**2
-    
-    y = np.log(H**2/(V * K))/(sigma_V * np.sqrt(T)) + lam * sigma_V * np.sqrt(T)
-    
-    x_1 = np.log(V/H)/(sigma_V * np.sqrt(T)) + lam * sigma_V * np.sqrt(T)
-    
-    y_1 = np.log(H/V)/(sigma_V * np.sqrt(T)) + lam * sigma_V * np.sqrt(T)
-    
-    term_0 = -phi * V  * norm.cdf(-x_1)
-    term_1 = K * np.exp(-r * T) * norm.cdf(-x_1 + sigma_V * np.sqrt(T))
-    term_2 = phi * V * (H/V)**(2 * lam) * (norm.cdf(y) - norm.cdf(y_1))
-    term_3 = - K * np.exp(-r * T) * (H/V)**(2 * lam - 2) * (norm.cdf(y - sigma_V * np.sqrt(T)) - norm.cdf(y_1 - sigma_V * np.sqrt(T)))
-    
-    put_di = term_0 + term_1 + term_2 + term_3
+    if H > K:
+        
+        put_di = put(V, T, K, r, sigma_V, phi)
+        
+    else:
+        
+
+        lamb = get_lambda(r, sigma_V)
+        x1, x2 = get_d(V, T, H, r, sigma_V)
+        y1, y2 = get_d(H**2, T, K * V, r, sigma_V)
+        
+        # zi is yi where H = K
+        z1, z2 = get_d(H, T, V, r, sigma_V)
+        
+        term_0 = -phi * V  * norm.cdf(-x1)
+        term_1 = K * np.exp(-r * T) * norm.cdf(-x2)
+        term_2 = phi * V * (H/V)**(2 * lamb) * (norm.cdf(y1) - norm.cdf(z1))
+        term_3 = -K * np.exp(-r * T) * (H/V)**(2 * lamb - 2) * (norm.cdf(y2) - norm.cdf(z2))
+        
+        put_di = term_0 + term_1 + term_2 + term_3
             
     return put_di
 
@@ -191,71 +381,20 @@ def put_do(V, T, K, H, r, sigma_V, phi = 1):
     phi: Fraction of firm's value retained in the case of default.
     """  
       
-    # put = put_do + put_di
-    put_do = put(V, T, K, r, sigma_V, phi) - put_di(V, T, K, H, r, sigma_V, phi)
-    
-    return put_do
+    if V < H:
+        
+        put_do = 0
+        
+    elif H > K:
+        
+        put_do = 0
 
-# Define function to get the probability of default if it's a barrier option
-def prob_default_mc(V, T, K, r, sigma_V, trails = 10000, steps = None):
-    """
-    Probability of default if possible for some values of t prior to maturity. 
-    Default occurs if the value of the firm is below K at time Δt, 2Δt, ..., or T = steps · Δt.
-    If T is measured in years, steps = floor(12 * T + 1) corresponds to possibility of default at each monthly payment.
-    Probability obtained using Monte Carlo simulation.
-    
-    V: Value of the firm.
-    T: Time until maturity.
-    K: Strike price; related to the firm's debt level.
-    r: Risk-free rate.
-    sigma_V: Firm volatility. 
-    trails: Monte Carlo simulations used to obtain approximation; antithetic values also considered.
-    steps: Number of times the firm can default within each simulation.
-    """  
-    
-    # If steps is None, set it equal to floor(12 * T + 1)
-    if steps is None:
+    else:
         
-        # Corresponds to monthly payments if T in years
-        steps = int(12 * T + 1)
+        # put = put_do + put_di
+        put_do = put(V, T, K, r, sigma_V, phi) - put_di(V, T, K, H, r, sigma_V, phi)
         
-    # Use the number of steps to obtain Δt
-    delta_t = T/steps
-    
-    # Set the random seed
-    np.random.seed(0)
-    
-    # Simulate the Brownian motions
-    bm = norm.rvs(loc = 0, scale = np.sqrt(delta_t), size = (trails, steps))
-    
-    # Consider antithetic cases
-    bm = np.concatenate([bm, -bm], axis = 0)
-    
-    # Create an array of values
-    values = np.repeat(V, repeats = 2 * trails * (steps + 1))
-    
-    # Reshape; one simulation each row and one step each columns
-    values = np.reshape(values, newshape = (2 * trails, steps + 1))
-    
-    # Initialize V_old
-    V_old = values[:, 0]
-    
-    # Loop over the steps but NOT simulations
-    for i in range(1, steps + 1):
-        
-        # Record the first result
-        V_new = V_old + V_old * (r - 0.5 * sigma_V**2) * delta_t + sigma_V * V_old * bm[:, i - 1]
-        
-        # Add it to the array
-        values[:, i] = V_new 
-        
-        # The new becomes the old
-        V_old = V_new
-    
-    # Calculate the fraction of observations where the lower barrier was breached
-    prob = np.mean(np.sum(values < K, axis = 1) > 0) + 1e-5
-    
-    return prob
+    return put_do
 
 
 # Define function to get spread
@@ -412,7 +551,7 @@ def spread_das(V, T, K_1, K_2, H, r, sigma_V, phi = 1):
     
 
 # Create the objective function that we would like to solve to obtain sigma_V
-def obj_sigma_V(sigma_V, sigma_E, V, T, K, r):
+def obj_sigma_V(sigma_V, sigma_E, V, T, K, r, down_and_out = False, h = 1e-5):
     """
     Objective function to be solved. Used to obtain the volatility of the firm's value.
     
@@ -422,19 +561,36 @@ def obj_sigma_V(sigma_V, sigma_E, V, T, K, r):
     T: Time until maturity.
     K: Strike price; related to the firm's debt level.
     r: Risk-free rate.
+    down_and_out: Whether equity is a down-and-out call option (Merton-Black-Cox) 
+        or simply a call option (Merton). Default is False.
+    h: Small step used to calculate the partial derivative with respoect to V in
+        the down-and-out formulation. Default is 1e-5.
     """
     
-    # Get d_1 for the calculation
-    d_1, _ = get_d(V, T, K, r, sigma_V)
-    
-    # Calculate value of equity
-    E = call(V, T, K, r, sigma_V)
-    
-    return E * sigma_E - V * sigma_V * norm.cdf(d_1)
+    if down_and_out:
+        
+        # Calculate value of equity
+        E = call_do(V, T, K, K, r, sigma_V)
+        
+        # Calculate central difference
+        Delta = (call_do(V + h, T, K, K, r, sigma_V) 
+                 - call_do(V - h, T, K, K, r, sigma_V))/(2 * h)
+        
+        return E * sigma_E - V * sigma_V * Delta       
+        
+    else:
+        
+        # Get d_1 for the calculation
+        d_1, _ = get_d(V, T, K, r, sigma_V)
+        
+        # Calculate value of equity
+        E = call(V, T, K, r, sigma_V)
+        
+        return E * sigma_E - V * sigma_V * norm.cdf(d_1)
 
 
 # Create function to obtain sigma_V
-def get_sigma_V(sigma_E, V, T, K, r):
+def get_sigma_V(sigma_E, V, T, K, r, down_and_out = False, h = 1e-5):
     """
     Obtain the volatility of the firm's value. Uses the Black-Scholes framework and fsolve.
     
@@ -443,17 +599,23 @@ def get_sigma_V(sigma_E, V, T, K, r):
     T: Time until maturity.
     K: Strike price; related to the firm's debt level.
     r: Risk-free rate.
+    down_and_out: Whether equity is a down-and-out call option (Merton-Black-Cox) 
+        or simply a call option (Merton). Default is False.
+    h: Small step used to calculate the partial derivative with respoect to V in
+            the down-and-out formulation. Default is 1e-5.
     """     
     
     # Use solver to find sigma_V
     result = fsolve(obj_sigma_V, x0 = 0.5 * sigma_E, 
-                        args = (sigma_E, V, T, K, r))
+                        args = (sigma_E, V, T, K, r, down_and_out, h))
     
-    if np.abs(obj_sigma_V(result, sigma_E, V, T, K, r)) < 1e-3:    
+    if np.abs(obj_sigma_V(result, sigma_E, V, T, K, r, down_and_out, h)) < 1e-3:    
         
         return result   
     
     else:       
+        
+        print('The optimizer didnt work!')
         
         # Assume vol of assets same as vol of market equity
         E = call(V, T, K, r, sigma_E)
@@ -465,7 +627,7 @@ def get_sigma_V(sigma_E, V, T, K, r):
     
     
 # Create the objective function that we would like to solve to obtain V
-def obj_V(V, sigma_V, E, T, K, r):
+def obj_V(V, sigma_V, E, T, K, r, down_and_out = False):
     """
     Objective function to solve. Used to obtain the firm's value.
  
@@ -475,19 +637,25 @@ def obj_V(V, sigma_V, E, T, K, r):
     T: Time until maturity.
     K: Strike price; related to the firm's debt level.
     r: Risk-free rate.
+    down_and_out: Whether equity is a down-and-out call option (Merton-Black-Cox) 
+        or simply a call option (Merton). Default is False.
     """
     
-    # Get d_1 for the calculation
-    d_1, _ = get_d(V, T, K, r, sigma_V)
-    
-    # Calculate value of equity
-    E_mm = call(V, T, K, r, sigma_V)
+    if down_and_out:
+
+        # Calculate value of equity
+        E_mm = call_do(V, T, K, K, r, sigma_V)
+        
+    else:
+        
+        # Calculate value of equity
+        E_mm = call(V, T, K, r, sigma_V)
     
     return E - E_mm
 
 
 # Create function to obtain V
-def get_V(sigma_V, E, T, K, r):
+def get_V(sigma_V, E, T, K, r, down_and_out = False):
     """
     Obtain the the firm's value. Uses the Black-Scholes framework and fsolve.
     
@@ -496,22 +664,33 @@ def get_V(sigma_V, E, T, K, r):
     T: Time until maturity.
     K: Strike price; related to the firm's debt level.
     r: Risk-free rate.
+    down_and_out: Whether equity is a down-and-out call option (Merton-Black-Cox) 
+        or simply a call option (Merton). Default is False.
     """     
     
     # Use solver to find sigma_V
-    result = fsolve(obj_V, x0 = E + K, args = (sigma_V, E, T, K, r))
+    result = fsolve(obj_V, x0 = E + K, args = (sigma_V, E, T, K, r, down_and_out))
     
-    if np.abs(obj_V(result, sigma_V, E, T, K, r)) < 1e-3:    
+    if np.abs(obj_V(result, sigma_V, E, T, K, r, down_and_out)) < 1e-3:    
         
-        return result   
+        return float(result)   
     
     else:       
         
-        return E + K * np.exp(-r * T)
+        print('The optimizer didnt work!')
+        
+        # Initialize V
+        V = E + K * np.exp(-r * T)
+            
+        for _ in range(5):
+            
+            V = E + K * np.exp(-r * T) - put(V, T, K, r, sigma_V)
+              
+        return V
     
     
 # Define objective function that we would like to solve to get both V and sigma_V
-def obj(V, sigma_V, sigma_E, E, T, K, r):
+def obj(V, sigma_V, sigma_E, E, T, K, r, down_and_out = False, h = 1e-5):
     """
     Objective function to be solved. Used to obtain the firm's value as well as
     the volatility of the firm's value.
@@ -523,14 +702,18 @@ def obj(V, sigma_V, sigma_E, E, T, K, r):
     T: Time until maturity.
     K: Strike price; related to the firm's debt level.
     r: Risk-free rate.
+    down_and_out: Whether equity is a down-and-out call option (Merton-Black-Cox) 
+        or simply a call option (Merton). Default is False.
+    h: Small step used to calculate the partial derivative with respoect to V in
+            the down-and-out formulation. Default is 1e-5.
     """
     
-    return [obj_V(V, sigma_V, E, T, K, r), 
-                obj_sigma_V(sigma_V, sigma_E, V, T, K, r)]
+    return [obj_V(V, sigma_V, E, T, K, r, down_and_out), 
+            obj_sigma_V(sigma_V, sigma_E, V, T, K, r, down_and_out, h)]
 
 
 # Create function to solve for both V and sigma_V
-def get_V_and_sigma_V(sigma_E, E, T, K, r):
+def get_V_and_sigma_V(sigma_E, E, T, K, r, down_and_out = False, h = 1e-5):
     """
     Obtain the firm's value as well as the volatility of the firm's value. Uses 
     the Black-Scholes framework and fsolve.
@@ -540,17 +723,24 @@ def get_V_and_sigma_V(sigma_E, E, T, K, r):
     T: Time until maturity.
     K: Strike price; related to the firm's debt level.
     r: Risk-free rate.
+    down_and_out: Whether equity is a down-and-out call option (Merton-Black-Cox) 
+        or simply a call option (Merton). Default is False.
+    h: Small step used to calculate the partial derivative with respoect to V in
+            the down-and-out formulation. Default is 1e-5.
     """     
     
     # Use solver to find V and sigma_V
-    result = fsolve(lambda x: obj(*x, sigma_E, E, T, K, r), 
+    result = fsolve(lambda x: obj(*x, sigma_E, E, T, K, r, down_and_out, h), 
                     x0 = [E + K * np.exp(-r * T), 0.5 * sigma_E])
     
-    if np.linalg.norm(obj(result[0], result[1], sigma_E, E, T, K, r)) < 1e-2:    
+    if np.linalg.norm(obj(result[0], result[1], sigma_E, E, T, K, r, 
+                          down_and_out, h)) < 1e-2:    
         
-        return result[0], result[1]   
+        return float(result[0]), float(result[1])   
     
     else:       
+        
+        print('The optimizer didnt work!')
         
         # Estimate of V
         V = E + K * np.exp(-r * T)
