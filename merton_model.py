@@ -2,6 +2,7 @@
 import numpy as np
 from scipy.stats import norm 
 from scipy.optimize import fsolve
+from functools import partial
 
 # Define function to get d_1 and d_2
 def get_d(V, T, K, r, sigma_V):
@@ -615,8 +616,6 @@ def get_sigma_V(sigma_E, V, T, K, r, down_and_out = False, h = 1e-5):
     
     else:       
         
-        print('The optimizer didnt work!')
-        
         # Assume vol of assets same as vol of market equity
         E = call(V, T, K, r, sigma_E)
         
@@ -677,8 +676,6 @@ def get_V(sigma_V, E, T, K, r, down_and_out = False):
     
     else:       
         
-        print('The optimizer didnt work!')
-        
         # Initialize V
         V = E + K * np.exp(-r * T)
             
@@ -732,6 +729,7 @@ def get_V_and_sigma_V(sigma_E, E, T, K, r, down_and_out = False, h = 1e-5):
     # Use solver to find V and sigma_V
     result = fsolve(lambda x: obj(*x, sigma_E, E, T, K, r, down_and_out, h), 
                     x0 = [E + K * np.exp(-r * T), 0.5 * sigma_E])
+
     
     if np.linalg.norm(obj(result[0], result[1], sigma_E, E, T, K, r, 
                           down_and_out, h)) < 1e-2:    
@@ -739,8 +737,6 @@ def get_V_and_sigma_V(sigma_E, E, T, K, r, down_and_out = False, h = 1e-5):
         return float(result[0]), float(result[1])   
     
     else:       
-        
-        print('The optimizer didnt work!')
         
         # Estimate of V
         V = E + K * np.exp(-r * T)
